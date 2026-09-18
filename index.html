@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>24 Points — Math Puzzle Game</title>
+<meta name="description" content="A self-contained 24 Points math puzzle game with an exhaustive solver. Combine four cards with + - x / to make 24." />
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --panel: #ffffff;
+    --ink: #16202f;
+    --muted: #64748b;
+    --brand: #2563eb;
+    --brand-ink: #ffffff;
+    --ok: #16a34a;
+    --bad: #dc2626;
+    --line: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 48px;
+  }
+  main { width: 100%; max-width: 680px; }
+  h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: -0.02em; }
+  .sub { margin: 0 0 24px; color: var(--muted); }
+  .board {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+  }
+  #cards { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; min-height: 92px; }
+  .card {
+    width: 76px; height: 92px;
+    background: var(--panel);
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card.selected { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
+  .card .expr { font-size: 11px; font-weight: 500; color: var(--muted); margin-top: 4px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .ops button { width: 52px; font-size: 19px; }
+  .controls { margin-top: 16px; }
+  .controls button { font-size: 14px; }
+  .primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  .primary:hover:not(:disabled) { background: #1d4ed8; color: var(--brand-ink); }
+  #status { margin-top: 16px; font-weight: 600; min-height: 24px; text-align: center; }
+  #status.ok { color: var(--ok); }
+  #status.bad { color: var(--bad); }
+  #steps { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; min-height: 20px; }
+  #solutions {
+    margin-top: 18px; display: none;
+    background: #f8fafc; border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px;
+    max-height: 220px; overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  #solutions h2 { margin: 0 0 8px; font-size: 14px; font-family: inherit; }
+  #solutions div { padding: 2px 0; }
+  footer { margin-top: 26px; text-align: center; color: var(--muted); font-size: 14px; }
+  footer a { color: var(--brand); text-decoration: none; font-weight: 600; }
+  footer a:hover { text-decoration: underline; }
+  .hintline { text-align: center; font-size: 13px; color: var(--muted); margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>24 Points</h1>
+  <p class="sub">Use all four cards exactly once, with <b>+ &minus; &times; &divide;</b> and parentheses, to make <b>24</b>.</p>
+
+  <div class="board">
+    <div id="cards"></div>
+
+    <div class="row ops">
+      <button data-op="+" disabled>+</button>
+      <button data-op="-" disabled>&minus;</button>
+      <button data-op="*" disabled>&times;</button>
+      <button data-op="/" disabled>&divide;</button>
+    </div>
+
+    <div class="row controls">
+      <button id="undo">Undo</button>
+      <button id="hint">Hint</button>
+      <button id="solve">Show all solutions</button>
+      <button id="new" class="primary">New game</button>
+    </div>
+
+    <div id="status"></div>
+    <div id="steps"></div>
+    <div id="solutions"><h2>Solutions</h2><div id="solList"></div></div>
+  </div>
+
+  <p class="hintline">Pick two cards, then pick an operator. The first card you tap goes on the left.</p>
+
+  <footer>
+    Want more number puzzles? Play the online version and other brain games at
+    <a href="https://iqiqgame.com/play/calculate-24-points-game-online-free" target="_blank" rel="noopener">iQiQGame</a>.
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var EPS = 1e-6;
+  var TARGET = 24;
+
+  /* ---------- solver ------------------------------------------------------
+     Exhaustively combines numbers pairwise until one value remains.
+     Returns the set of expression strings that evaluate to the target.
+  ------------------------------------------------------------------------ */
+  function solve(values, target) {
+    target = (target === undefined) ? TARGET : target;
+    var found = Object.create(null);
+
+    function rec(nums, exprs) {
+      if (nums.length === 1) {
+        if (Math.abs(nums[0] - target) < EPS) found[exprs[0]] = true;
+        return;
+      }
+      for (var i = 0; i < nums.length; i++) {
+        for (var j = 0; j < nums.length; j++) {
+          if (i === j) continue;
+          var restN = [], restE = [];
+          for (var k = 0; k < nums.length; k++) {
+            if (k !== i && k !== j) { restN.push(nums[k]); restE.push(exprs[k]); }
+          }
+          var a = nums[i], b = nums[j], ea = exprs[i], eb = exprs[j];
+          var candidates = [
+            [a + b, "(" + ea + " + " + eb + ")"],
+            [a - b, "(" + ea + " - " + eb + ")"],
+            [a * b, "(" + ea + " * " + eb + ")"]
+          ];
+          if (Math.abs(b) > EPS) candidates.push([a / b, "(" + ea + " / " + eb + ")"]);
+
+          for (var c = 0; c < candidates.length; c++) {
+            restN.push(candidates[c][0]);
+            restE.push(candidates[c][1]);
+            rec(restN, restE);
+            restN.pop();
+            restE.pop();
+          }
+        }
+      }
+    }
+
+    rec(values.slice(), values.map(function (n) { return String(n); }));
+    return Object.keys(found);
+  }
+
+  /* ---------- state ------------------------------------------------------ */
+  var cards = [];          // [{ value, expr }]
+  var history = [];        // snapshots for undo
+  var selected = [];       // indices
+  var originalNumbers = [];
+
+  var cardsEl = document.getElementById("cards");
+  var statusEl = document.getElementById("status");
+  var stepsEl = document.getElementById("steps");
+  var solutionsEl = document.getElementById("solutions");
+  var solListEl = document.getElementById("solList");
+  var opButtons = document.querySelectorAll(".ops button");
+  var undoBtn = document.getElementById("undo");
+  var hintBtn = document.getElementById("hint");
+  var solveBtn = document.getElementById("solve");
+  var newBtn = document.getElementById("new");
+
+  function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
+
+  function deal() {
+    var nums;
+    do {
+      nums = [randInt(1, 9), randInt(1, 9), randInt(1, 9), randInt(1, 9)];
+    } while (solve(nums).length === 0);
+    originalNumbers = nums.slice();
+    cards = nums.map(function (n) { return { value: n, expr: String(n) }; });
+    history = [];
+    selected = [];
+    statusEl.textContent = "";
+    statusEl.className = "";
+    stepsEl.textContent = "";
+    solutionsEl.style.display = "none";
+    render();
+  }
+
+  function render() {
+    cardsEl.innerHTML = "";
+    cards.forEach(function (card, idx) {
+      var el = document.createElement("div");
+      el.className = "card" + (selected.indexOf(idx) >= 0 ? " selected" : "");
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      var display = (Math.abs(card.value - Math.round(card.value)) < EPS)
+        ? String(Math.round(card.value))
+        : card.value.toFixed(2);
+      var v = document.createElement("span");
+      v.textContent = display;
+      var e = document.createElement("span");
+      e.className = "expr";
+      e.textContent = card.expr;
+      e.title = card.expr;
+      el.appendChild(v);
+      el.appendChild(e);
+      el.addEventListener("click", function () { toggle(idx); });
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(idx); }
+      });
+      cardsEl.appendChild(el);
+    });
+
+    var canOperate = selected.length === 2;
+    for (var i = 0; i < opButtons.length; i++) opButtons[i].disabled = !canOperate;
+    undoBtn.disabled = history.length === 0;
+    var done = cards.length === 1;
+    hintBtn.disabled = done;
+    solveBtn.disabled = done;
+  }
+
+  function toggle(idx) {
+    if (cards.length === 1) return;
+    var at = selected.indexOf(idx);
+    if (at >= 0) selected.splice(at, 1);
+    else {
+      selected.push(idx);
+      if (selected.length > 2) selected.shift();
+    }
+    render();
+  }
+
+  function snapshot() {
+    history.push(cards.map(function (c) { return { value: c.value, expr: c.expr }; }));
+  }
+
+  function applyOp(op) {
+    if (selected.length !== 2) return;
+    var i = selected[0], j = selected[1];
+    var a = cards[i], b = cards[j];
+    var value, expr;
+
+    if (op === "+") { value = a.value + b.value; expr = "(" + a.expr + " + " + b.expr + ")"; }
+    else if (op === "-") { value = a.value - b.value; expr = "(" + a.expr + " - " + b.expr + ")"; }
+    else if (op === "*") { value = a.value * b.value; expr = "(" + a.expr + " * " + b.expr + ")"; }
+    else if (op === "/") {
+      if (Math.abs(b.value) < EPS) { flash("Cannot divide by zero.", "bad"); return; }
+      value = a.value / b.value; expr = "(" + a.expr + " / " + b.expr + ")";
+    } else return;
+
+    snapshot();
+    var remaining = cards.filter(function (_, k) { return k !== i && k !== j; });
+    remaining.push({ value: value, expr: expr });
+    cards = remaining;
+    selected = [];
+
+    stepsEl.textContent = "Current expression: " + expr;
+    solutionsEl.style.display = "none";
+
+    if (cards.length === 1) {
+      var ok = Math.abs(cards[0].value - TARGET) < EPS;
+      if (ok) flash("Solved! " + stripOuter(cards[0].expr) + " = 24", "ok");
+      else flash("That makes " + round(cards[0].value) + ", not 24. Try Undo or New game.", "bad");
+    } else {
+      statusEl.textContent = "";
+      statusEl.className = "";
+    }
+    render();
+  }
+
+  function round(n) {
+    return (Math.abs(n - Math.round(n)) < EPS) ? String(Math.round(n)) : n.toFixed(3);
+  }
+  function stripOuter(s) {
+    return (s.charAt(0) === "(" && s.charAt(s.length - 1) === ")") ? s.slice(1, -1) : s;
+  }
+  function flash(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = kind;
+  }
+
+  function showSolutions(limit) {
+    var all = solve(originalNumbers);
+    if (!all.length) {
+      solListEl.innerHTML = "<div>No solution for this hand — deal again.</div>";
+    } else {
+      var shown = limit ? all.slice(0, limit) : all;
+      solListEl.innerHTML = shown.map(function (s) {
+        return "<div>" + stripOuter(s) + " = 24</div>";
+      }).join("") + (shown.length < all.length
+        ? "<div>… and " + (all.length - shown.length) + " more</div>" : "");
+    }
+    solutionsEl.style.display = "block";
+  }
+
+  /* ---------- wiring ----------------------------------------------------- */
+  for (var i = 0; i < opButtons.length; i++) {
+    (function (btn) {
+      btn.addEventListener("click", function () { applyOp(btn.getAttribute("data-op")); });
+    })(opButtons[i]);
+  }
+
+  undoBtn.addEventListener("click", function () {
+    if (!history.length) return;
+    cards = history.pop();
+    selected = [];
+    statusEl.textContent = "";
+    statusEl.className = "";
+    stepsEl.textContent = "";
+    solutionsEl.style.display = "none";
+    render();
+  });
+
+  hintBtn.addEventListener("click", function () {
+    if (cards.length < 2) return;
+    var sols = solve(cards.map(function (c) { return c.value; }));
+    if (!sols.length) flash("No way to reach 24 from here — undo a step.", "bad");
+    else flash("One solution from here: " + stripOuter(sols[0]) + " = 24", "ok");
+  });
+
+  solveBtn.addEventListener("click", function () { showSolutions(0); });
+  newBtn.addEventListener("click", deal);
+
+  document.addEventListener("keydown", function (ev) {
+    if (selected.length !== 2) return;
+    var map = { "+": "+", "-": "-", "*": "*", "x": "*", "X": "*", "/": "/" };
+    if (map[ev.key]) { ev.preventDefault(); applyOp(map[ev.key]); }
+  });
+
+  deal();
+})();
+</script>
+</body>
+</html>
