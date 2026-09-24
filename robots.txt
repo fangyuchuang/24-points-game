@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fangyuchuang.github.io/24-points-game/sitemap.xml
